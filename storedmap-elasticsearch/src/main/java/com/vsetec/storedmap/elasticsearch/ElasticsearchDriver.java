@@ -11,10 +11,22 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import java.util.function.BiConsumer;
+import org.apache.commons.codec.binary.Base32;
 import org.apache.commons.codec.binary.Base64;
 import org.apache.http.HttpHost;
 import org.apache.http.client.config.RequestConfig;
 import org.elasticsearch.ElasticsearchStatusException;
+import org.elasticsearch.action.ActionListener;
+import org.elasticsearch.action.DocWriteRequest;
+import org.elasticsearch.action.bulk.BackoffPolicy;
+import org.elasticsearch.action.bulk.BulkProcessor;
+import org.elasticsearch.action.bulk.BulkRequest;
+import org.elasticsearch.action.bulk.BulkResponse;
 import org.elasticsearch.action.delete.DeleteRequest;
 import org.elasticsearch.action.get.GetRequest;
 import org.elasticsearch.action.get.GetResponse;
@@ -27,6 +39,9 @@ import org.elasticsearch.client.RestClientBuilder;
 import org.elasticsearch.client.RestHighLevelClient;
 import org.elasticsearch.common.bytes.BytesReference;
 import org.elasticsearch.common.collect.Tuple;
+import org.elasticsearch.common.unit.ByteSizeUnit;
+import org.elasticsearch.common.unit.ByteSizeValue;
+import org.elasticsearch.common.unit.TimeValue;
 import org.elasticsearch.common.xcontent.XContentHelper;
 import org.elasticsearch.common.xcontent.XContentType;
 import org.elasticsearch.rest.RestStatus;
@@ -37,8 +52,12 @@ import org.elasticsearch.rest.RestStatus;
  */
 public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
 
+    private final HashMap<RestHighLevelClient, BulkProcessor> _bulkers = new HashMap<>(4);
+    private final Base32 _b32 = new Base32(true);
+
     @Override
     public RestHighLevelClient openConnection(Properties properties) {
+
         RestClientBuilder builder = RestClient.builder(new HttpHost(
                 properties.getProperty("storedmap.elasticsearch.host", "localhost"),
                 Integer.parseInt(properties.getProperty("storedmap.elasticsearch.port", "9200")),
@@ -55,11 +74,55 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
                 .setMaxRetryTimeoutMillis(180000); // TODO: parametrize - move to the config file
 
         RestHighLevelClient client = new RestHighLevelClient(builder);
+
+        BulkProcessor.Listener listener = new BulkProcessor.Listener() {
+            @Override
+            public void beforeBulk(long executionId, BulkRequest request) {
+
+            }
+
+            @Override
+            public void afterBulk(long executionId, BulkRequest request, BulkResponse response) {
+                for (Object r : request.payloads()) {
+                    Runnable callback = (Runnable) r;
+                    callback.run();
+                }
+            }
+
+            @Override
+            public void afterBulk(long executionId, BulkRequest request, Throwable failure) {
+                // TODO: do something useful with errors 
+            }
+        };
+
+        BiConsumer<BulkRequest, ActionListener<BulkResponse>> bulkConsumer
+                = (request, bulkListener) -> client.bulkAsync(request, RequestOptions.DEFAULT, bulkListener);
+        BulkProcessor bulker = BulkProcessor.builder(bulkConsumer, listener)
+                .setBulkActions(500)
+                .setBulkSize(new ByteSizeValue(1L, ByteSizeUnit.MB))
+                .setConcurrentRequests(1)
+                .setFlushInterval(TimeValue.timeValueSeconds(10L))
+                .setBackoffPolicy(BackoffPolicy.constantBackoff(TimeValue.timeValueSeconds(1L), 3))
+                .build();
+
+        synchronized (_bulkers) {
+            _bulkers.put(client, bulker);
+        }
+
         return client;
     }
 
     @Override
     public void closeConnection(RestHighLevelClient client) {
+        synchronized (_bulkers) {
+            BulkProcessor bulker = _bulkers.remove(client);
+            try {
+                bulker.awaitClose(3, TimeUnit.MINUTES);
+            } catch (InterruptedException e) {
+                throw new RuntimeException("Unexpected interruption", e);
+            }
+        }
+
         try {
             client.close();
         } catch (IOException e) {
@@ -234,17 +297,25 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
 
     @Override
     public void put(String key, String indexName, RestHighLevelClient connection, byte[] value, Runnable callbackOnIndex) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+        String data = Base64.encodeBase64String(value);
+        IndexRequest req = Requests.indexRequest(indexName).type("doc").id(key).source("value", data);
+        _bulkers.get(connection).add(req, callbackOnIndex);
     }
 
     @Override
     public void put(String key, String indexName, RestHighLevelClient connection, Map<String, Object> map, Locale[] locales, byte[] sorter, String[] tags, Runnable callbackOnAdditionalIndex) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+        Map<String, Object> data = new HashMap<>(5);
+        data.put("sorter", _b32.encodeAsString(sorter));
+        data.put("tags", tags);
+        data.put("value", map);
+        IndexRequest req = Requests.indexRequest(indexName).type("doc").id(key).source(data);
+        _bulkers.get(connection).add(req, callbackOnAdditionalIndex);
     }
 
     @Override
     public void remove(String key, String indexName, RestHighLevelClient connection, Runnable callback) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+        DeleteRequest req = Requests.deleteRequest(indexName).type("doc").id(key);
+        _bulkers.get(connection).add(req, callback);
     }
 
 }
