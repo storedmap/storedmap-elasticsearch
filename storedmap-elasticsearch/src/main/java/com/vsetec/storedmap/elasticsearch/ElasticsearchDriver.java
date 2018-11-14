@@ -8,12 +8,10 @@ package com.vsetec.storedmap.elasticsearch;
 import com.vsetec.storedmap.Driver;
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 import org.apache.commons.codec.binary.Base32;
@@ -22,7 +20,6 @@ import org.apache.http.HttpHost;
 import org.apache.http.client.config.RequestConfig;
 import org.elasticsearch.ElasticsearchStatusException;
 import org.elasticsearch.action.ActionListener;
-import org.elasticsearch.action.DocWriteRequest;
 import org.elasticsearch.action.bulk.BackoffPolicy;
 import org.elasticsearch.action.bulk.BulkProcessor;
 import org.elasticsearch.action.bulk.BulkRequest;
@@ -44,7 +41,11 @@ import org.elasticsearch.common.unit.ByteSizeValue;
 import org.elasticsearch.common.unit.TimeValue;
 import org.elasticsearch.common.xcontent.XContentHelper;
 import org.elasticsearch.common.xcontent.XContentType;
+import org.elasticsearch.index.query.QueryBuilder;
+import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.rest.RestStatus;
+import org.elasticsearch.search.builder.SearchSourceBuilder;
+import org.elasticsearch.search.sort.SortOrder;
 
 /**
  *
@@ -83,6 +84,8 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
 
             @Override
             public void afterBulk(long executionId, BulkRequest request, BulkResponse response) {
+                List<Object> payloads = request.payloads();
+                System.out.println("afterbulk with " + payloads.toString());
                 for (Object r : request.payloads()) {
                     Runnable callback = (Runnable) r;
                     callback.run();
@@ -214,42 +217,87 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
 
     @Override
     public Iterable<String> get(String indexName, RestHighLevelClient connection) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+        QueryBuilder query = QueryBuilders.matchAllQuery();
+        SearchSourceBuilder source = new SearchSourceBuilder();
+        source.query(query);
+        return new Ids(connection, indexName + "_main", source, true);
     }
 
     @Override
     public Iterable<String> get(String indexName, RestHighLevelClient connection, String[] anyOfTags) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+        QueryBuilder query = QueryBuilders.termsQuery("tags.keyword", anyOfTags);
+        SearchSourceBuilder source = new SearchSourceBuilder();
+        source.query(query);
+        return new Ids(connection, indexName + "_indx", source, true);
     }
 
     @Override
     public Iterable<String> get(String indexName, RestHighLevelClient connection, byte[] minSorter, byte[] maxSorter, boolean ascending) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+        QueryBuilder query = QueryBuilders.rangeQuery("sorter")
+                .from(minSorter == null ? null : _b32.encodeAsString(minSorter)).includeLower(true)
+                .to(maxSorter == null ? null : _b32.encodeAsString(maxSorter)).includeUpper(true);
+        SearchSourceBuilder source = new SearchSourceBuilder();
+        source.query(query);
+        source.sort("sorter", ascending ? SortOrder.ASC : SortOrder.DESC);
+        return new Ids(connection, indexName + "_indx", source, true);
     }
 
     @Override
     public Iterable<String> get(String indexName, RestHighLevelClient connection, String textQuery) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+        QueryBuilder query = QueryBuilders.wrapperQuery(textQuery);
+        SearchSourceBuilder source = new SearchSourceBuilder();
+        source.query(query);
+        return new Ids(connection, indexName + "_indx", source, true);
     }
 
     @Override
     public Iterable<String> get(String indexName, RestHighLevelClient connection, byte[] minSorter, byte[] maxSorter, String[] anyOfTags, boolean ascending) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+        QueryBuilder query1 = QueryBuilders.termsQuery("tags.keyword", anyOfTags);
+        QueryBuilder query2 = QueryBuilders.rangeQuery("sorter")
+                .from(minSorter == null ? null : _b32.encodeAsString(minSorter)).includeLower(true)
+                .to(maxSorter == null ? null : _b32.encodeAsString(maxSorter)).includeUpper(true);
+        QueryBuilder query = QueryBuilders.boolQuery().must(query1).must(query2);
+        SearchSourceBuilder source = new SearchSourceBuilder();
+        source.query(query);
+        source.sort("sorter", ascending ? SortOrder.ASC : SortOrder.DESC);
+        return new Ids(connection, indexName + "_indx", source, true);
     }
 
     @Override
     public Iterable<String> get(String indexName, RestHighLevelClient connection, String textQuery, String[] anyOfTags) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+        QueryBuilder query1 = QueryBuilders.termsQuery("tags.keyword", anyOfTags);
+        QueryBuilder query2 = QueryBuilders.wrapperQuery(textQuery);
+        QueryBuilder query = QueryBuilders.boolQuery().must(query1).must(query2);
+        SearchSourceBuilder source = new SearchSourceBuilder();
+        source.query(query);
+        return new Ids(connection, indexName + "_indx", source, true);
     }
 
     @Override
     public Iterable<String> get(String indexName, RestHighLevelClient connection, String textQuery, byte[] minSorter, byte[] maxSorter, String[] anyOfTags, boolean ascending) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+        QueryBuilder query1 = QueryBuilders.termsQuery("tags.keyword", anyOfTags);
+        QueryBuilder query2 = QueryBuilders.rangeQuery("sorter")
+                .from(minSorter == null ? null : _b32.encodeAsString(minSorter)).includeLower(true)
+                .to(maxSorter == null ? null : _b32.encodeAsString(maxSorter)).includeUpper(true);
+        QueryBuilder query3 = QueryBuilders.wrapperQuery(textQuery);
+        QueryBuilder query = QueryBuilders.boolQuery().must(query1).must(query2).must(query3);
+        SearchSourceBuilder source = new SearchSourceBuilder();
+        source.query(query);
+        source.sort("sorter", ascending ? SortOrder.ASC : SortOrder.DESC);
+        return new Ids(connection, indexName + "_indx", source, true);
     }
 
     @Override
     public Iterable<String> get(String indexName, RestHighLevelClient connection, String textQuery, byte[] minSorter, byte[] maxSorter, boolean ascending) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+        QueryBuilder query2 = QueryBuilders.rangeQuery("sorter")
+                .from(minSorter == null ? null : _b32.encodeAsString(minSorter)).includeLower(true)
+                .to(maxSorter == null ? null : _b32.encodeAsString(maxSorter)).includeUpper(true);
+        QueryBuilder query3 = QueryBuilders.wrapperQuery(textQuery);
+        QueryBuilder query = QueryBuilders.boolQuery().must(query2).must(query3);
+        SearchSourceBuilder source = new SearchSourceBuilder();
+        source.query(query);
+        source.sort("sorter", ascending ? SortOrder.ASC : SortOrder.DESC);
+        return new Ids(connection, indexName + "_indx", source, true);
     }
 
     @Override
@@ -277,6 +325,7 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
             IndexRequest put = Requests.indexRequest(indexName).type("doc").id(key).source(map);
             try {
                 connection.index(put, RequestOptions.DEFAULT);
+                System.out.println("locked " + indexName + " key " + key);
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
@@ -287,9 +336,11 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
 
     @Override
     public void unlock(String key, String indexName, RestHighLevelClient connection) {
+        System.out.println("UNlockING " + indexName + "_lock key " + key);
         DeleteRequest req = Requests.deleteRequest(indexName + "_lock").type("doc").id(key);
         try {
             connection.delete(req, RequestOptions.DEFAULT);
+            System.out.println("UNlocked " + indexName + "_lock key " + key);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -298,24 +349,29 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
     @Override
     public void put(String key, String indexName, RestHighLevelClient connection, byte[] value, Runnable callbackOnIndex) {
         String data = Base64.encodeBase64String(value);
-        IndexRequest req = Requests.indexRequest(indexName).type("doc").id(key).source("value", data);
+        IndexRequest req = Requests.indexRequest(indexName + "_main").type("doc").id(key).source("value", data);
         _bulkers.get(connection).add(req, callbackOnIndex);
     }
 
     @Override
     public void put(String key, String indexName, RestHighLevelClient connection, Map<String, Object> map, Locale[] locales, byte[] sorter, String[] tags, Runnable callbackOnAdditionalIndex) {
-        Map<String, Object> data = new HashMap<>(5);
+        Map<String, Object> data = new HashMap<>(map);
         data.put("sorter", _b32.encodeAsString(sorter));
         data.put("tags", tags);
-        data.put("value", map);
-        IndexRequest req = Requests.indexRequest(indexName).type("doc").id(key).source(data);
+        IndexRequest req = Requests.indexRequest(indexName + "_indx").type("doc").id(key).source(data);
         _bulkers.get(connection).add(req, callbackOnAdditionalIndex);
     }
 
     @Override
     public void remove(String key, String indexName, RestHighLevelClient connection, Runnable callback) {
-        DeleteRequest req = Requests.deleteRequest(indexName).type("doc").id(key);
-        _bulkers.get(connection).add(req, callback);
+        DeleteRequest req1 = Requests.deleteRequest(indexName + "_main").type("doc").id(key);
+        DeleteRequest req2 = Requests.deleteRequest(indexName + "_indx").type("doc").id(key);
+        _bulkers.get(connection).add(req1, new Runnable() {
+            @Override
+            public void run() {
+            }
+        });
+        _bulkers.get(connection).add(req2, callback);
     }
 
 }
