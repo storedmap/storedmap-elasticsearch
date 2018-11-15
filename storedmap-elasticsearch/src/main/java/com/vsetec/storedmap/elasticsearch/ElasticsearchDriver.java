@@ -12,6 +12,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 import org.apache.commons.codec.binary.Base32;
@@ -21,6 +23,7 @@ import org.apache.http.client.config.RequestConfig;
 import org.elasticsearch.ElasticsearchStatusException;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.bulk.BackoffPolicy;
+import org.elasticsearch.action.bulk.BulkItemResponse;
 import org.elasticsearch.action.bulk.BulkProcessor;
 import org.elasticsearch.action.bulk.BulkRequest;
 import org.elasticsearch.action.bulk.BulkResponse;
@@ -39,6 +42,8 @@ import org.elasticsearch.common.collect.Tuple;
 import org.elasticsearch.common.unit.ByteSizeUnit;
 import org.elasticsearch.common.unit.ByteSizeValue;
 import org.elasticsearch.common.unit.TimeValue;
+import org.elasticsearch.common.xcontent.XContentBuilder;
+import org.elasticsearch.common.xcontent.XContentFactory;
 import org.elasticsearch.common.xcontent.XContentHelper;
 import org.elasticsearch.common.xcontent.XContentType;
 import org.elasticsearch.index.query.QueryBuilder;
@@ -55,6 +60,7 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
 
     private final HashMap<RestHighLevelClient, BulkProcessor> _bulkers = new HashMap<>(4);
     private final Base32 _b32 = new Base32(true);
+    private final HashMap<RestHighLevelClient, ExecutorService> _unlockers = new HashMap<>(4);
 
     @Override
     public RestHighLevelClient openConnection(Properties properties) {
@@ -85,16 +91,34 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
             @Override
             public void afterBulk(long executionId, BulkRequest request, BulkResponse response) {
                 List<Object> payloads = request.payloads();
-                System.out.println("afterbulk with " + payloads.toString());
+                System.out.println("AFTERbulk with " + payloads.toString());
+
+                if (response.hasFailures()) {
+                    for (BulkItemResponse bir : response.getItems()) {
+                        if (bir.isFailed()) {
+                            System.out.println("ITEM Failure::: " + bir.getFailureMessage());
+                        }
+                    }
+                }
+
                 for (Object r : request.payloads()) {
                     Runnable callback = (Runnable) r;
-                    callback.run();
+                    //callback.run();
+                    _unlockers.get(client).submit(callback);
                 }
             }
 
             @Override
             public void afterBulk(long executionId, BulkRequest request, Throwable failure) {
                 // TODO: do something useful with errors 
+                List<Object> payloads = request.payloads();
+                System.out.println("Failure " + failure.toString() + " afterbulk with " + payloads.toString());
+                for (Object r : request.payloads()) {
+                    Runnable callback = (Runnable) r;
+                    //callback.run();
+                    _unlockers.get(client).submit(callback);
+
+                }
             }
         };
 
@@ -110,6 +134,7 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
 
         synchronized (_bulkers) {
             _bulkers.put(client, bulker);
+            _unlockers.put(client, Executors.newSingleThreadExecutor((Runnable r) -> new Thread(r, "ElasticsearchUnlocker")));
         }
 
         return client;
@@ -121,6 +146,14 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
             BulkProcessor bulker = _bulkers.remove(client);
             try {
                 bulker.awaitClose(3, TimeUnit.MINUTES);
+            } catch (InterruptedException e) {
+                throw new RuntimeException("Unexpected interruption", e);
+            }
+
+            ExecutorService unlocker = _unlockers.remove(client);
+            try {
+                unlocker.shutdown();
+                unlocker.awaitTermination(3, TimeUnit.MINUTES);
             } catch (InterruptedException e) {
                 throw new RuntimeException("Unexpected interruption", e);
             }
@@ -157,6 +190,7 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
         Map<String, String> params = new HashMap<>();
         params.put("wait_for_status", "yellow");
         Response response = client.performRequest("GET", "_cluster/health", params);
+        System.out.println("Waiting for yellow");
         response.getEntity();
     }
 
@@ -235,7 +269,7 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
     public Iterable<String> get(String indexName, RestHighLevelClient connection, byte[] minSorter, byte[] maxSorter, boolean ascending) {
         QueryBuilder query = QueryBuilders.rangeQuery("sorter")
                 .from(minSorter == null ? null : _b32.encodeAsString(minSorter)).includeLower(true)
-                .to(maxSorter == null ? null : _b32.encodeAsString(maxSorter)).includeUpper(true);
+                .to(maxSorter == null ? null : _b32.encodeAsString(maxSorter)).includeUpper(false);
         SearchSourceBuilder source = new SearchSourceBuilder();
         source.query(query);
         source.sort("sorter", ascending ? SortOrder.ASC : SortOrder.DESC);
@@ -255,7 +289,7 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
         QueryBuilder query1 = QueryBuilders.termsQuery("tags.keyword", anyOfTags);
         QueryBuilder query2 = QueryBuilders.rangeQuery("sorter")
                 .from(minSorter == null ? null : _b32.encodeAsString(minSorter)).includeLower(true)
-                .to(maxSorter == null ? null : _b32.encodeAsString(maxSorter)).includeUpper(true);
+                .to(maxSorter == null ? null : _b32.encodeAsString(maxSorter)).includeUpper(false);
         QueryBuilder query = QueryBuilders.boolQuery().must(query1).must(query2);
         SearchSourceBuilder source = new SearchSourceBuilder();
         source.query(query);
@@ -278,7 +312,7 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
         QueryBuilder query1 = QueryBuilders.termsQuery("tags.keyword", anyOfTags);
         QueryBuilder query2 = QueryBuilders.rangeQuery("sorter")
                 .from(minSorter == null ? null : _b32.encodeAsString(minSorter)).includeLower(true)
-                .to(maxSorter == null ? null : _b32.encodeAsString(maxSorter)).includeUpper(true);
+                .to(maxSorter == null ? null : _b32.encodeAsString(maxSorter)).includeUpper(false);
         QueryBuilder query3 = QueryBuilders.wrapperQuery(textQuery);
         QueryBuilder query = QueryBuilders.boolQuery().must(query1).must(query2).must(query3);
         SearchSourceBuilder source = new SearchSourceBuilder();
@@ -309,8 +343,10 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
         Map map = _get(key, indexName, connection);
         if (map != null) {
             Long lockedUntil = (Long) map.get("lockedUntil");
+            //System.out.println(indexName + ", "+ key +" locked until = " + lockedUntil);
             if (lockedUntil != null) {
                 millisStillToWait = (int) (lockedUntil - currentTime);
+                System.out.println(key + "millis still to wait = " + millisStillToWait);
             } else {
                 millisStillToWait = 0;
             }
@@ -348,9 +384,11 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
 
     @Override
     public void put(String key, String indexName, RestHighLevelClient connection, byte[] value, Runnable callbackOnIndex) {
+        System.out.println("SubmittING MAIN index for " + indexName + " -- " + key);
         String data = Base64.encodeBase64String(value);
         IndexRequest req = Requests.indexRequest(indexName + "_main").type("doc").id(key).source("value", data);
         _bulkers.get(connection).add(req, callbackOnIndex);
+        System.out.println("Submitted MAIN index for " + indexName + " -- " + key);
     }
 
     @Override
@@ -358,8 +396,18 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
         Map<String, Object> data = new HashMap<>(map);
         data.put("sorter", _b32.encodeAsString(sorter));
         data.put("tags", tags);
-        IndexRequest req = Requests.indexRequest(indexName + "_indx").type("doc").id(key).source(data);
+        XContentBuilder builder;
+        try {
+            builder = XContentFactory.contentBuilder(Requests.INDEX_CONTENT_TYPE).map(data);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        //map = XContentHelper.convertToMap(builder.bytes(), true, builder.contentType()).v2();
+
+        System.out.println("SubmittING ADDITIONAL index for " + indexName + " -- " + key + " ::: " + data.toString());
+        IndexRequest req = Requests.indexRequest(indexName + "_indx").type("doc").id(key).source(builder);
         _bulkers.get(connection).add(req, callbackOnAdditionalIndex);
+        System.out.println("Submitted ADDITIONAL index for " + indexName + " -- " + key);
     }
 
     @Override
