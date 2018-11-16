@@ -79,13 +79,16 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
         BulkProcessor.Listener listener = new BulkProcessor.Listener() {
             @Override
             public void beforeBulk(long executionId, BulkRequest request) {
-
+                for (Object r : request.payloads()) {
+                    Runnable[] callbacks = (Runnable[]) r;
+                    if (callbacks[0] != null) {
+                        _unlockers.get(client).submit(callbacks[0]);
+                    }
+                }
             }
 
             @Override
             public void afterBulk(long executionId, BulkRequest request, BulkResponse response) {
-                List<Object> payloads = request.payloads();
-
                 if (response.hasFailures()) {
                     for (BulkItemResponse bir : response.getItems()) {
                         if (bir.isFailed()) {
@@ -95,9 +98,10 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
                 }
 
                 for (Object r : request.payloads()) {
-                    Runnable callback = (Runnable) r;
-                    //callback.run();
-                    _unlockers.get(client).submit(callback);
+                    Runnable[] callbacks = (Runnable[]) r;
+                    if (callbacks[1] != null) {
+                        _unlockers.get(client).submit(callbacks[1]);
+                    }
                 }
             }
 
@@ -107,10 +111,10 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
                 List<Object> payloads = request.payloads();
                 System.out.println("Failure " + failure.toString() + " afterbulk with " + payloads.toString());
                 for (Object r : request.payloads()) {
-                    Runnable callback = (Runnable) r;
-                    //callback.run();
-                    _unlockers.get(client).submit(callback);
-
+                    Runnable[] callbacks = (Runnable[]) r;
+                    if (callbacks[1] != null) {
+                        _unlockers.get(client).submit(callbacks[1]);
+                    }
                 }
             }
         };
@@ -127,7 +131,7 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
 
         synchronized (_bulkers) {
             _bulkers.put(client, bulker);
-            _unlockers.put(client, Executors.newSingleThreadExecutor((Runnable r) -> new Thread(r, "ElasticsearchUnlocker")));
+            _unlockers.put(client, Executors.newSingleThreadExecutor((Runnable r) -> new Thread(r, "ElasticsearchCallback")));
         }
 
         return client;
@@ -373,10 +377,10 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
     }
 
     @Override
-    public void put(String key, String indexName, RestHighLevelClient connection, byte[] value, Runnable callbackOnIndex) {
+    public void put(String key, String indexName, RestHighLevelClient connection, byte[] value, Runnable callbackBeforeIndex, Runnable callbackAfterIndex) {
         String data = Base64.encodeBase64String(value);
         IndexRequest req = Requests.indexRequest(indexName + "_main").type("doc").id(key).source("value", data);
-        _bulkers.get(connection).add(req, callbackOnIndex);
+        _bulkers.get(connection).add(req, new Runnable[]{callbackBeforeIndex, callbackAfterIndex});
     }
 
     @Override
@@ -385,19 +389,15 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
         data.put("sorter", _b32.encodeAsString(sorter));
         data.put("tags", tags);
         IndexRequest req = Requests.indexRequest(indexName + "_indx").type("doc").id(key).source(data);
-        _bulkers.get(connection).add(req, callbackOnAdditionalIndex);
+        _bulkers.get(connection).add(req, new Runnable[]{null, callbackOnAdditionalIndex});
     }
 
     @Override
     public void remove(String key, String indexName, RestHighLevelClient connection, Runnable callback) {
         DeleteRequest req1 = Requests.deleteRequest(indexName + "_main").type("doc").id(key);
         DeleteRequest req2 = Requests.deleteRequest(indexName + "_indx").type("doc").id(key);
-        _bulkers.get(connection).add(req1, new Runnable() {
-            @Override
-            public void run() {
-            }
-        });
-        _bulkers.get(connection).add(req2, callback);
+        _bulkers.get(connection).add(req1, new Runnable[]{null, null});
+        _bulkers.get(connection).add(req2, new Runnable[]{null, callback});
     }
 
 }
