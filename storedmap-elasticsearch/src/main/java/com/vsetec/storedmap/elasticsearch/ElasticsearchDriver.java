@@ -85,7 +85,6 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
             @Override
             public void afterBulk(long executionId, BulkRequest request, BulkResponse response) {
                 List<Object> payloads = request.payloads();
-                System.out.println("AFTERbulk with " + payloads.toString());
 
                 if (response.hasFailures()) {
                     for (BulkItemResponse bir : response.getItems()) {
@@ -341,7 +340,6 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
             //System.out.println(indexName + ", "+ key +" locked until = " + lockedUntil);
             if (lockedUntil != null) {
                 millisStillToWait = (int) (lockedUntil - currentTime);
-                System.out.println(key + "millis still to wait = " + millisStillToWait);
             } else {
                 millisStillToWait = 0;
             }
@@ -356,7 +354,6 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
             IndexRequest put = Requests.indexRequest(indexName).type("doc").id(key).source(map);
             try {
                 connection.index(put, RequestOptions.DEFAULT);
-                System.out.println("locked " + indexName + " key " + key);
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
@@ -367,11 +364,9 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
 
     @Override
     public void unlock(String key, String indexName, RestHighLevelClient connection) {
-        System.out.println("UNlockING " + indexName + "_lock key " + key);
         DeleteRequest req = Requests.deleteRequest(indexName + "_lock").type("doc").id(key);
         try {
             connection.delete(req, RequestOptions.DEFAULT);
-            System.out.println("UNlocked " + indexName + "_lock key " + key);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -379,11 +374,9 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
 
     @Override
     public void put(String key, String indexName, RestHighLevelClient connection, byte[] value, Runnable callbackOnIndex) {
-        System.out.println("SubmittING MAIN index for " + indexName + " -- " + key);
         String data = Base64.encodeBase64String(value);
         IndexRequest req = Requests.indexRequest(indexName + "_main").type("doc").id(key).source("value", data);
         _bulkers.get(connection).add(req, callbackOnIndex);
-        System.out.println("Submitted MAIN index for " + indexName + " -- " + key);
     }
 
     @Override
@@ -391,18 +384,8 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
         Map<String, Object> data = new HashMap<>(map);
         data.put("sorter", _b32.encodeAsString(sorter));
         data.put("tags", tags);
-//        XContentBuilder builder;
-//        try {
-//            builder = XContentFactory.contentBuilder(Requests.INDEX_CONTENT_TYPE).map(data);
-//        } catch (IOException e) {
-//            throw new RuntimeException(e);
-//        }
-        //map = XContentHelper.convertToMap(builder.bytes(), true, builder.contentType()).v2();
-
-        System.out.println("SubmittING ADDITIONAL index for " + indexName + " -- " + key + " ::: " + data.toString());
         IndexRequest req = Requests.indexRequest(indexName + "_indx").type("doc").id(key).source(data);
         _bulkers.get(connection).add(req, callbackOnAdditionalIndex);
-        System.out.println("Submitted ADDITIONAL index for " + indexName + " -- " + key);
     }
 
     @Override
