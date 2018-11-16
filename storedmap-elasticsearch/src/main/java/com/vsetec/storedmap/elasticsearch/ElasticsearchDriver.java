@@ -37,15 +37,9 @@ import org.elasticsearch.client.Response;
 import org.elasticsearch.client.RestClient;
 import org.elasticsearch.client.RestClientBuilder;
 import org.elasticsearch.client.RestHighLevelClient;
-import org.elasticsearch.common.bytes.BytesReference;
-import org.elasticsearch.common.collect.Tuple;
 import org.elasticsearch.common.unit.ByteSizeUnit;
 import org.elasticsearch.common.unit.ByteSizeValue;
 import org.elasticsearch.common.unit.TimeValue;
-import org.elasticsearch.common.xcontent.XContentBuilder;
-import org.elasticsearch.common.xcontent.XContentFactory;
-import org.elasticsearch.common.xcontent.XContentHelper;
-import org.elasticsearch.common.xcontent.XContentType;
 import org.elasticsearch.index.query.QueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.rest.RestStatus;
@@ -227,11 +221,12 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
             return null;
         }
 
-        BytesReference bytes = response.getSourceAsBytesRef();
-
-        Tuple<XContentType, Map<String, Object>> tuple = XContentHelper.convertToMap(bytes, true, Requests.INDEX_CONTENT_TYPE);
-
-        Map ret = tuple.v2();
+//        BytesReference bytes = response.getSourceAsBytesRef();
+//
+//        Tuple<XContentType, Map<String, Object>> tuple = XContentHelper.convertToMap(bytes, true, Requests.INDEX_CONTENT_TYPE);
+//
+//        Map ret = tuple.v2();
+        Map ret = response.getSourceAsMap();
 
         return ret;
     }
@@ -396,16 +391,16 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
         Map<String, Object> data = new HashMap<>(map);
         data.put("sorter", _b32.encodeAsString(sorter));
         data.put("tags", tags);
-        XContentBuilder builder;
-        try {
-            builder = XContentFactory.contentBuilder(Requests.INDEX_CONTENT_TYPE).map(data);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+//        XContentBuilder builder;
+//        try {
+//            builder = XContentFactory.contentBuilder(Requests.INDEX_CONTENT_TYPE).map(data);
+//        } catch (IOException e) {
+//            throw new RuntimeException(e);
+//        }
         //map = XContentHelper.convertToMap(builder.bytes(), true, builder.contentType()).v2();
 
         System.out.println("SubmittING ADDITIONAL index for " + indexName + " -- " + key + " ::: " + data.toString());
-        IndexRequest req = Requests.indexRequest(indexName + "_indx").type("doc").id(key).source(builder);
+        IndexRequest req = Requests.indexRequest(indexName + "_indx").type("doc").id(key).source(data);
         _bulkers.get(connection).add(req, callbackOnAdditionalIndex);
         System.out.println("Submitted ADDITIONAL index for " + indexName + " -- " + key);
     }
