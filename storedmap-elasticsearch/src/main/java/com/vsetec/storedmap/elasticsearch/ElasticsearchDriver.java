@@ -164,22 +164,22 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
     }
 
     @Override
-    public int getMaximumIndexNameLength() {
+    public int getMaximumIndexNameLength(RestHighLevelClient client) {
         return 200;
     }
 
     @Override
-    public int getMaximumKeyLength() {
+    public int getMaximumKeyLength(RestHighLevelClient client) {
         return 200;
     }
 
     @Override
-    public int getMaximumTagLength() {
+    public int getMaximumTagLength(RestHighLevelClient client) {
         return 200;
     }
 
     @Override
-    public int getMaximumSorterLength() {
+    public int getMaximumSorterLength(RestHighLevelClient client) {
         return 200;
     }
 
