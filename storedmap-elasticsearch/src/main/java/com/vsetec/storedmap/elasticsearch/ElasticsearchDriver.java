@@ -333,6 +333,91 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
     }
 
     @Override
+    public Iterable<String> get(String indexName, RestHighLevelClient connection, int from, int size) {
+        QueryBuilder query = QueryBuilders.matchAllQuery();
+        SearchSourceBuilder source = new SearchSourceBuilder();
+        source.query(query).from(from).size(size);
+        return new Ids(connection, indexName + "_main", source, false);
+    }
+
+    @Override
+    public Iterable<String> get(String indexName, RestHighLevelClient connection, String[] anyOfTags, int from, int size) {
+        QueryBuilder query = QueryBuilders.termsQuery("tags.keyword", anyOfTags);
+        SearchSourceBuilder source = new SearchSourceBuilder();
+        source.query(query).from(from).size(size);
+        return new Ids(connection, indexName + "_indx", source, false);
+    }
+
+    @Override
+    public Iterable<String> get(String indexName, RestHighLevelClient connection, byte[] minSorter, byte[] maxSorter, boolean ascending, int from, int size) {
+        QueryBuilder query = QueryBuilders.rangeQuery("sorter")
+                .from(minSorter == null ? null : _b32.encodeAsString(minSorter)).includeLower(true)
+                .to(maxSorter == null ? null : _b32.encodeAsString(maxSorter)).includeUpper(false);
+        SearchSourceBuilder source = new SearchSourceBuilder();
+        source.query(query).from(from).size(size);
+        source.sort("sorter", ascending ? SortOrder.ASC : SortOrder.DESC);
+        return new Ids(connection, indexName + "_indx", source, false);
+    }
+
+    @Override
+    public Iterable<String> get(String indexName, RestHighLevelClient connection, String textQuery, int from, int size) {
+        QueryBuilder query = QueryBuilders.wrapperQuery(textQuery);
+        SearchSourceBuilder source = new SearchSourceBuilder();
+        source.query(query).from(from).size(size);
+        return new Ids(connection, indexName + "_indx", source, false);
+    }
+
+    @Override
+    public Iterable<String> get(String indexName, RestHighLevelClient connection, byte[] minSorter, byte[] maxSorter, String[] anyOfTags, boolean ascending, int from, int size) {
+        QueryBuilder query1 = QueryBuilders.termsQuery("tags.keyword", anyOfTags);
+        QueryBuilder query2 = QueryBuilders.rangeQuery("sorter")
+                .from(minSorter == null ? null : _b32.encodeAsString(minSorter)).includeLower(true)
+                .to(maxSorter == null ? null : _b32.encodeAsString(maxSorter)).includeUpper(false);
+        QueryBuilder query = QueryBuilders.boolQuery().must(query1).must(query2);
+        SearchSourceBuilder source = new SearchSourceBuilder();
+        source.query(query).from(from).size(size);
+        source.sort("sorter", ascending ? SortOrder.ASC : SortOrder.DESC);
+        return new Ids(connection, indexName + "_indx", source, false);
+    }
+
+    @Override
+    public Iterable<String> get(String indexName, RestHighLevelClient connection, String textQuery, String[] anyOfTags, int from, int size) {
+        QueryBuilder query1 = QueryBuilders.termsQuery("tags.keyword", anyOfTags);
+        QueryBuilder query2 = QueryBuilders.wrapperQuery(textQuery);
+        QueryBuilder query = QueryBuilders.boolQuery().must(query1).must(query2);
+        SearchSourceBuilder source = new SearchSourceBuilder();
+        source.query(query).from(from).size(size);
+        return new Ids(connection, indexName + "_indx", source, false);
+    }
+
+    @Override
+    public Iterable<String> get(String indexName, RestHighLevelClient connection, String textQuery, byte[] minSorter, byte[] maxSorter, String[] anyOfTags, boolean ascending, int from, int size) {
+        QueryBuilder query1 = QueryBuilders.termsQuery("tags.keyword", anyOfTags);
+        QueryBuilder query2 = QueryBuilders.rangeQuery("sorter")
+                .from(minSorter == null ? null : _b32.encodeAsString(minSorter)).includeLower(true)
+                .to(maxSorter == null ? null : _b32.encodeAsString(maxSorter)).includeUpper(false);
+        QueryBuilder query3 = QueryBuilders.wrapperQuery(textQuery);
+        QueryBuilder query = QueryBuilders.boolQuery().must(query1).must(query2).must(query3);
+        SearchSourceBuilder source = new SearchSourceBuilder();
+        source.query(query).from(from).size(size);
+        source.sort("sorter", ascending ? SortOrder.ASC : SortOrder.DESC);
+        return new Ids(connection, indexName + "_indx", source, false);
+    }
+
+    @Override
+    public Iterable<String> get(String indexName, RestHighLevelClient connection, String textQuery, byte[] minSorter, byte[] maxSorter, boolean ascending, int from, int size) {
+        QueryBuilder query2 = QueryBuilders.rangeQuery("sorter")
+                .from(minSorter == null ? null : _b32.encodeAsString(minSorter)).includeLower(true)
+                .to(maxSorter == null ? null : _b32.encodeAsString(maxSorter)).includeUpper(true);
+        QueryBuilder query3 = QueryBuilders.wrapperQuery(textQuery);
+        QueryBuilder query = QueryBuilders.boolQuery().must(query2).must(query3);
+        SearchSourceBuilder source = new SearchSourceBuilder();
+        source.query(query).from(from).size(size);
+        source.sort("sorter", ascending ? SortOrder.ASC : SortOrder.DESC);
+        return new Ids(connection, indexName + "_indx", source, false);
+    }
+
+    @Override
     public int tryLock(String key, String indexName, RestHighLevelClient connection, int milliseconds) {
         long currentTime = System.currentTimeMillis(); // TODO: make universal cluster time
         int millisStillToWait;
