@@ -8,8 +8,8 @@
     <dependencies>
         <dependency>
             <groupId>com.vsetec.storedmap</groupId>
-            <artifactId>storedmap-core</artifactId>
-            <version>0.1-SNAPSHOT</version>
+            <artifactId>storedmap</artifactId>
+            <version>0.2-SNAPSHOT</version>
             <type>jar</type>
         </dependency>
         <dependency>
