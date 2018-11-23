@@ -7,6 +7,7 @@ package com.vsetec.storedmap.elasticsearch;
 
 import com.vsetec.storedmap.Driver;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -63,6 +64,18 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
     private final HashMap<RestHighLevelClient, BulkProcessor> _bulkers = new HashMap<>(4);
     private final Base32 _b32 = new Base32(true);
     private final HashMap<RestHighLevelClient, ExecutorService> _unlockers = new HashMap<>(4);
+    private final int _maxSorterLength;
+
+    {
+        // TODO: review this hacky way to know the longest sorter length
+        char[] longestChars = new char[200];
+        for (int i = 0; i < longestChars.length; i++) {
+            longestChars[i] = 'Z';
+        }
+        String longestString = new String(longestChars);
+        String encoded = _b32.encodeAsString(longestString.getBytes(StandardCharsets.UTF_8));
+        _maxSorterLength = encoded.length();
+    }
 
     @Override
     public RestHighLevelClient openConnection(Properties properties) {
@@ -188,7 +201,7 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
 
     @Override
     public int getMaximumSorterLength(RestHighLevelClient client) {
-        return 200;
+        return _maxSorterLength;
     }
 
     private void _waitForClusterReady(RestClient client) throws IOException {
