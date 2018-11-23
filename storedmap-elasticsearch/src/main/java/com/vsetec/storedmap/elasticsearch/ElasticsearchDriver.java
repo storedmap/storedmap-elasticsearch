@@ -8,10 +8,12 @@ package com.vsetec.storedmap.elasticsearch;
 import com.vsetec.storedmap.Driver;
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -22,6 +24,9 @@ import org.apache.http.HttpHost;
 import org.apache.http.client.config.RequestConfig;
 import org.elasticsearch.ElasticsearchStatusException;
 import org.elasticsearch.action.ActionListener;
+import org.elasticsearch.action.admin.cluster.health.ClusterHealthRequest;
+import org.elasticsearch.action.admin.cluster.health.ClusterHealthResponse;
+import org.elasticsearch.action.admin.indices.delete.DeleteIndexRequest;
 import org.elasticsearch.action.bulk.BackoffPolicy;
 import org.elasticsearch.action.bulk.BulkItemResponse;
 import org.elasticsearch.action.bulk.BulkProcessor;
@@ -31,6 +36,8 @@ import org.elasticsearch.action.delete.DeleteRequest;
 import org.elasticsearch.action.get.GetRequest;
 import org.elasticsearch.action.get.GetResponse;
 import org.elasticsearch.action.index.IndexRequest;
+import org.elasticsearch.action.search.SearchRequest;
+import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.client.Requests;
 import org.elasticsearch.client.Response;
@@ -43,6 +50,7 @@ import org.elasticsearch.common.unit.TimeValue;
 import org.elasticsearch.index.query.QueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.rest.RestStatus;
+import org.elasticsearch.search.SearchHits;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.elasticsearch.search.sort.SortOrder;
 
@@ -483,6 +491,214 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
         DeleteRequest req2 = Requests.deleteRequest(indexName + "_indx").type("doc").id(key);
         _bulkers.get(connection).add(req1, new Runnable[]{null, null});
         _bulkers.get(connection).add(req2, new Runnable[]{null, callback});
+    }
+
+    @Override
+    public void removeAll(String indexName, RestHighLevelClient client) {
+        DeleteIndexRequest request1 = new DeleteIndexRequest(indexName + "_indx");
+        DeleteIndexRequest request2 = new DeleteIndexRequest(indexName + "_main");
+
+        try {
+            client.indices().delete(request1, RequestOptions.DEFAULT);
+            client.indices().delete(request2, RequestOptions.DEFAULT);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public Iterable<String> getIndices(RestHighLevelClient connection) {
+        try {
+            ClusterHealthRequest request = new ClusterHealthRequest();
+            ClusterHealthResponse response = connection.cluster().health(request, RequestOptions.DEFAULT);
+            Set<String> indices = response.getIndices().keySet();
+            Set<String> tables = new HashSet<>();
+            for (String indexCandidate : indices) {
+                int strPos = -1;
+                if ((strPos = indexCandidate.indexOf("_main")) > 0) {
+                    indexCandidate = indexCandidate.substring(0, strPos);
+                } else if ((strPos = indexCandidate.indexOf("_lock")) > 0) {
+                    indexCandidate = indexCandidate.substring(0, strPos);
+                } else if ((strPos = indexCandidate.indexOf("_indx")) > 0) {
+                    indexCandidate = indexCandidate.substring(0, strPos);
+                }
+                if (strPos > 0) {
+                    tables.add(indexCandidate);
+                }
+            }
+            return tables;
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public long count(String indexName, RestHighLevelClient connection) {
+        QueryBuilder query = QueryBuilders.matchAllQuery();
+        SearchSourceBuilder source = new SearchSourceBuilder();
+        source.query(query);
+
+        source = source.size(0);
+
+        SearchRequest sr = new SearchRequest(indexName + "_indx");
+        sr.source(source);
+        try {
+            SearchResponse response = connection.search(sr, RequestOptions.DEFAULT);
+            SearchHits hits = response.getHits();
+            return hits.getTotalHits();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public long count(String indexName, RestHighLevelClient connection, String textQuery, byte[] minSorter, byte[] maxSorter, String[] anyOfTags) {
+        QueryBuilder query1 = QueryBuilders.termsQuery("tags.keyword", anyOfTags);
+        QueryBuilder query2 = QueryBuilders.rangeQuery("sorter")
+                .from(minSorter == null ? null : _b32.encodeAsString(minSorter)).includeLower(true)
+                .to(maxSorter == null ? null : _b32.encodeAsString(maxSorter)).includeUpper(false);
+        QueryBuilder query3 = QueryBuilders.wrapperQuery(textQuery);
+        QueryBuilder query = QueryBuilders.boolQuery().must(query1).must(query2).must(query3);
+        SearchSourceBuilder source = new SearchSourceBuilder();
+        source.query(query);
+
+        source = source.size(0);
+
+        SearchRequest sr = new SearchRequest(indexName + "_indx");
+        sr.source(source);
+        try {
+            SearchResponse response = connection.search(sr, RequestOptions.DEFAULT);
+            SearchHits hits = response.getHits();
+            return hits.getTotalHits();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public long count(String indexName, RestHighLevelClient connection, String[] anyOfTags) {
+        QueryBuilder query1 = QueryBuilders.termsQuery("tags.keyword", anyOfTags);
+        SearchSourceBuilder source = new SearchSourceBuilder();
+        source.query(query1);
+
+        source = source.size(0);
+
+        SearchRequest sr = new SearchRequest(indexName + "_indx");
+        sr.source(source);
+        try {
+            SearchResponse response = connection.search(sr, RequestOptions.DEFAULT);
+            SearchHits hits = response.getHits();
+            return hits.getTotalHits();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public long count(String indexName, RestHighLevelClient connection, byte[] minSorter, byte[] maxSorter) {
+        QueryBuilder query2 = QueryBuilders.rangeQuery("sorter")
+                .from(minSorter == null ? null : _b32.encodeAsString(minSorter)).includeLower(true)
+                .to(maxSorter == null ? null : _b32.encodeAsString(maxSorter)).includeUpper(false);
+        SearchSourceBuilder source = new SearchSourceBuilder();
+        source.query(query2);
+
+        source = source.size(0);
+
+        SearchRequest sr = new SearchRequest(indexName + "_indx");
+        sr.source(source);
+        try {
+            SearchResponse response = connection.search(sr, RequestOptions.DEFAULT);
+            SearchHits hits = response.getHits();
+            return hits.getTotalHits();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public long count(String indexName, RestHighLevelClient connection, String textQuery) {
+        QueryBuilder query3 = QueryBuilders.wrapperQuery(textQuery);
+        SearchSourceBuilder source = new SearchSourceBuilder();
+        source.query(query3);
+
+        source = source.size(0);
+
+        SearchRequest sr = new SearchRequest(indexName + "_indx");
+        sr.source(source);
+        try {
+            SearchResponse response = connection.search(sr, RequestOptions.DEFAULT);
+            SearchHits hits = response.getHits();
+            return hits.getTotalHits();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public long count(String indexName, RestHighLevelClient connection, byte[] minSorter, byte[] maxSorter, String[] anyOfTags) {
+        QueryBuilder query1 = QueryBuilders.termsQuery("tags.keyword", anyOfTags);
+        QueryBuilder query2 = QueryBuilders.rangeQuery("sorter")
+                .from(minSorter == null ? null : _b32.encodeAsString(minSorter)).includeLower(true)
+                .to(maxSorter == null ? null : _b32.encodeAsString(maxSorter)).includeUpper(false);
+        QueryBuilder query = QueryBuilders.boolQuery().must(query1).must(query2);
+        SearchSourceBuilder source = new SearchSourceBuilder();
+        source.query(query);
+
+        source = source.size(0);
+
+        SearchRequest sr = new SearchRequest(indexName + "_indx");
+        sr.source(source);
+        try {
+            SearchResponse response = connection.search(sr, RequestOptions.DEFAULT);
+            SearchHits hits = response.getHits();
+            return hits.getTotalHits();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public long count(String indexName, RestHighLevelClient connection, String textQuery, String[] anyOfTags) {
+        QueryBuilder query1 = QueryBuilders.termsQuery("tags.keyword", anyOfTags);
+        QueryBuilder query3 = QueryBuilders.wrapperQuery(textQuery);
+        QueryBuilder query = QueryBuilders.boolQuery().must(query1).must(query3);
+        SearchSourceBuilder source = new SearchSourceBuilder();
+        source.query(query);
+
+        source = source.size(0);
+
+        SearchRequest sr = new SearchRequest(indexName + "_indx");
+        sr.source(source);
+        try {
+            SearchResponse response = connection.search(sr, RequestOptions.DEFAULT);
+            SearchHits hits = response.getHits();
+            return hits.getTotalHits();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public long count(String indexName, RestHighLevelClient connection, String textQuery, byte[] minSorter, byte[] maxSorter) {
+        QueryBuilder query2 = QueryBuilders.rangeQuery("sorter")
+                .from(minSorter == null ? null : _b32.encodeAsString(minSorter)).includeLower(true)
+                .to(maxSorter == null ? null : _b32.encodeAsString(maxSorter)).includeUpper(false);
+        QueryBuilder query3 = QueryBuilders.wrapperQuery(textQuery);
+        QueryBuilder query = QueryBuilders.boolQuery().must(query2).must(query3);
+        SearchSourceBuilder source = new SearchSourceBuilder();
+        source.query(query);
+
+        source = source.size(0);
+
+        SearchRequest sr = new SearchRequest(indexName + "_indx");
+        sr.source(source);
+        try {
+            SearchResponse response = connection.search(sr, RequestOptions.DEFAULT);
+            SearchHits hits = response.getHits();
+            return hits.getTotalHits();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
 }
