@@ -7,7 +7,6 @@ package com.vsetec.storedmap.elasticsearch;
 
 import com.vsetec.storedmap.Driver;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -68,13 +67,12 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
 
     {
         // TODO: review this hacky way to know the longest sorter length
-        char[] longestChars = new char[200];
+        byte[] longestChars = new byte[200];
         for (int i = 0; i < longestChars.length; i++) {
-            longestChars[i] = 'Z';
+            longestChars[i] = 'a';
         }
-        String longestString = new String(longestChars);
-        String encoded = _b32.encodeAsString(longestString.getBytes(StandardCharsets.UTF_8));
-        _maxSorterLength = encoded.length();
+
+        _maxSorterLength = _b32.decode(longestChars).length;
     }
 
     @Override
@@ -344,7 +342,7 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
     public Iterable<String> get(String indexName, RestHighLevelClient connection, String textQuery, byte[] minSorter, byte[] maxSorter, boolean ascending) {
         QueryBuilder query2 = QueryBuilders.rangeQuery("sorter")
                 .from(minSorter == null ? null : _b32.encodeAsString(minSorter)).includeLower(true)
-                .to(maxSorter == null ? null : _b32.encodeAsString(maxSorter)).includeUpper(true);
+                .to(maxSorter == null ? null : _b32.encodeAsString(maxSorter)).includeUpper(false);
         QueryBuilder query3 = QueryBuilders.wrapperQuery(textQuery);
         QueryBuilder query = QueryBuilders.boolQuery().must(query2).must(query3);
         SearchSourceBuilder source = new SearchSourceBuilder();
@@ -429,7 +427,7 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
     public Iterable<String> get(String indexName, RestHighLevelClient connection, String textQuery, byte[] minSorter, byte[] maxSorter, boolean ascending, int from, int size) {
         QueryBuilder query2 = QueryBuilders.rangeQuery("sorter")
                 .from(minSorter == null ? null : _b32.encodeAsString(minSorter)).includeLower(true)
-                .to(maxSorter == null ? null : _b32.encodeAsString(maxSorter)).includeUpper(true);
+                .to(maxSorter == null ? null : _b32.encodeAsString(maxSorter)).includeUpper(false);
         QueryBuilder query3 = QueryBuilders.wrapperQuery(textQuery);
         QueryBuilder query = QueryBuilders.boolQuery().must(query2).must(query3);
         SearchSourceBuilder source = new SearchSourceBuilder();
