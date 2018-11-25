@@ -13,9 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.vsetec.storedmap.elasticsearch;
+package org.storedmap.elasticsearch;
 
-import com.vsetec.storedmap.Driver;
+import org.storedmap.Driver;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.HashSet;
