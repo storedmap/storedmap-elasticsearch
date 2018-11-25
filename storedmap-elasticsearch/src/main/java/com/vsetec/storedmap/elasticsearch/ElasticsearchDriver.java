@@ -57,8 +57,10 @@ import org.elasticsearch.client.RestHighLevelClient;
 import org.elasticsearch.common.unit.ByteSizeUnit;
 import org.elasticsearch.common.unit.ByteSizeValue;
 import org.elasticsearch.common.unit.TimeValue;
+import org.elasticsearch.index.query.BoolQueryBuilder;
 import org.elasticsearch.index.query.QueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
+import org.elasticsearch.index.query.RangeQueryBuilder;
 import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.search.SearchHits;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
@@ -294,12 +296,21 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
 
     @Override
     public Iterable<String> get(String indexName, RestHighLevelClient connection, byte[] minSorter, byte[] maxSorter, boolean ascending) {
-        QueryBuilder query = QueryBuilders.rangeQuery("sorter")
-                .from(minSorter == null ? null : _b32.encodeAsString(minSorter)).includeLower(true)
-                .to(maxSorter == null ? null : _b32.encodeAsString(maxSorter)).includeUpper(false);
+        RangeQueryBuilder query2;
+        if (minSorter != null || maxSorter != null) {
+            query2 = QueryBuilders.rangeQuery("sorter.keyword");
+            if (minSorter != null) {
+                query2 = query2.gte(_b32.encodeAsString(minSorter));
+            }
+            if (maxSorter != null) {
+                query2 = query2.lt(_b32.encodeAsString(maxSorter));
+            }
+        } else {
+            query2 = null;
+        }
         SearchSourceBuilder source = new SearchSourceBuilder();
-        source.query(query);
-        source.sort("sorter", ascending ? SortOrder.ASC : SortOrder.DESC);
+        source.query(query2);
+        source.sort("sorter.keyword", ascending ? SortOrder.ASC : SortOrder.DESC);
         return new Ids(connection, indexName + "_indx", source, true);
     }
 
@@ -314,13 +325,25 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
     @Override
     public Iterable<String> get(String indexName, RestHighLevelClient connection, byte[] minSorter, byte[] maxSorter, String[] anyOfTags, boolean ascending) {
         QueryBuilder query1 = QueryBuilders.termsQuery("tags.keyword", anyOfTags);
-        QueryBuilder query2 = QueryBuilders.rangeQuery("sorter")
-                .from(minSorter == null ? null : _b32.encodeAsString(minSorter)).includeLower(true)
-                .to(maxSorter == null ? null : _b32.encodeAsString(maxSorter)).includeUpper(false);
-        QueryBuilder query = QueryBuilders.boolQuery().must(query1).must(query2);
+        RangeQueryBuilder query2;
+        if (minSorter != null || maxSorter != null) {
+            query2 = QueryBuilders.rangeQuery("sorter.keyword");
+            if (minSorter != null) {
+                query2 = query2.gte(_b32.encodeAsString(minSorter));
+            }
+            if (maxSorter != null) {
+                query2 = query2.lt(_b32.encodeAsString(maxSorter));
+            }
+        } else {
+            query2 = null;
+        }
+        BoolQueryBuilder query = QueryBuilders.boolQuery().must(query1);
+        if (query2 != null) {
+            query = query.must(query2);
+        }
         SearchSourceBuilder source = new SearchSourceBuilder();
         source.query(query);
-        source.sort("sorter", ascending ? SortOrder.ASC : SortOrder.DESC);
+        source.sort("sorter.keyword", ascending ? SortOrder.ASC : SortOrder.DESC);
         return new Ids(connection, indexName + "_indx", source, true);
     }
 
@@ -337,27 +360,51 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
     @Override
     public Iterable<String> get(String indexName, RestHighLevelClient connection, String textQuery, byte[] minSorter, byte[] maxSorter, String[] anyOfTags, boolean ascending) {
         QueryBuilder query1 = QueryBuilders.termsQuery("tags.keyword", anyOfTags);
-        QueryBuilder query2 = QueryBuilders.rangeQuery("sorter")
-                .from(minSorter == null ? null : _b32.encodeAsString(minSorter)).includeLower(true)
-                .to(maxSorter == null ? null : _b32.encodeAsString(maxSorter)).includeUpper(false);
+        RangeQueryBuilder query2;
+        if (minSorter != null || maxSorter != null) {
+            query2 = QueryBuilders.rangeQuery("sorter.keyword");
+            if (minSorter != null) {
+                query2 = query2.gte(_b32.encodeAsString(minSorter));
+            }
+            if (maxSorter != null) {
+                query2 = query2.lt(_b32.encodeAsString(maxSorter));
+            }
+        } else {
+            query2 = null;
+        }
         QueryBuilder query3 = QueryBuilders.wrapperQuery(textQuery);
-        QueryBuilder query = QueryBuilders.boolQuery().must(query1).must(query2).must(query3);
+        BoolQueryBuilder query = QueryBuilders.boolQuery().must(query1).must(query3);
+        if (query2 != null) {
+            query = query.must(query2);
+        }
         SearchSourceBuilder source = new SearchSourceBuilder();
         source.query(query);
-        source.sort("sorter", ascending ? SortOrder.ASC : SortOrder.DESC);
+        source.sort("sorter.keyword", ascending ? SortOrder.ASC : SortOrder.DESC);
         return new Ids(connection, indexName + "_indx", source, true);
     }
 
     @Override
     public Iterable<String> get(String indexName, RestHighLevelClient connection, String textQuery, byte[] minSorter, byte[] maxSorter, boolean ascending) {
-        QueryBuilder query2 = QueryBuilders.rangeQuery("sorter")
-                .from(minSorter == null ? null : _b32.encodeAsString(minSorter)).includeLower(true)
-                .to(maxSorter == null ? null : _b32.encodeAsString(maxSorter)).includeUpper(false);
+        RangeQueryBuilder query2;
+        if (minSorter != null || maxSorter != null) {
+            query2 = QueryBuilders.rangeQuery("sorter.keyword");
+            if (minSorter != null) {
+                query2 = query2.gte(_b32.encodeAsString(minSorter));
+            }
+            if (maxSorter != null) {
+                query2 = query2.lt(_b32.encodeAsString(maxSorter));
+            }
+        } else {
+            query2 = null;
+        }
         QueryBuilder query3 = QueryBuilders.wrapperQuery(textQuery);
-        QueryBuilder query = QueryBuilders.boolQuery().must(query2).must(query3);
+        BoolQueryBuilder query = QueryBuilders.boolQuery().must(query3);
+        if (query2 != null) {
+            query = query.must(query2);
+        }
         SearchSourceBuilder source = new SearchSourceBuilder();
         source.query(query);
-        source.sort("sorter", ascending ? SortOrder.ASC : SortOrder.DESC);
+        source.sort("sorter.keyword", ascending ? SortOrder.ASC : SortOrder.DESC);
         return new Ids(connection, indexName + "_indx", source, true);
     }
 
@@ -379,12 +426,21 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
 
     @Override
     public Iterable<String> get(String indexName, RestHighLevelClient connection, byte[] minSorter, byte[] maxSorter, boolean ascending, int from, int size) {
-        QueryBuilder query = QueryBuilders.rangeQuery("sorter")
-                .from(minSorter == null ? null : _b32.encodeAsString(minSorter)).includeLower(true)
-                .to(maxSorter == null ? null : _b32.encodeAsString(maxSorter)).includeUpper(false);
+        RangeQueryBuilder query2;
+        if (minSorter != null || maxSorter != null) {
+            query2 = QueryBuilders.rangeQuery("sorter.keyword");
+            if (minSorter != null) {
+                query2 = query2.gte(_b32.encodeAsString(minSorter));
+            }
+            if (maxSorter != null) {
+                query2 = query2.lt(_b32.encodeAsString(maxSorter));
+            }
+        } else {
+            query2 = null;
+        }
         SearchSourceBuilder source = new SearchSourceBuilder();
-        source.query(query).from(from).size(size);
-        source.sort("sorter", ascending ? SortOrder.ASC : SortOrder.DESC);
+        source.query(query2).from(from).size(size);
+        source.sort("sorter.keyword", ascending ? SortOrder.ASC : SortOrder.DESC);
         return new Ids(connection, indexName + "_indx", source, false);
     }
 
@@ -399,13 +455,25 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
     @Override
     public Iterable<String> get(String indexName, RestHighLevelClient connection, byte[] minSorter, byte[] maxSorter, String[] anyOfTags, boolean ascending, int from, int size) {
         QueryBuilder query1 = QueryBuilders.termsQuery("tags.keyword", anyOfTags);
-        QueryBuilder query2 = QueryBuilders.rangeQuery("sorter")
-                .from(minSorter == null ? null : _b32.encodeAsString(minSorter)).includeLower(true)
-                .to(maxSorter == null ? null : _b32.encodeAsString(maxSorter)).includeUpper(false);
-        QueryBuilder query = QueryBuilders.boolQuery().must(query1).must(query2);
+        RangeQueryBuilder query2;
+        if (minSorter != null || maxSorter != null) {
+            query2 = QueryBuilders.rangeQuery("sorter.keyword");
+            if (minSorter != null) {
+                query2 = query2.gte(_b32.encodeAsString(minSorter));
+            }
+            if (maxSorter != null) {
+                query2 = query2.lt(_b32.encodeAsString(maxSorter));
+            }
+        } else {
+            query2 = null;
+        }
+        BoolQueryBuilder query = QueryBuilders.boolQuery().must(query1);
+        if (query2 != null) {
+            query = query.must(query2);
+        }
         SearchSourceBuilder source = new SearchSourceBuilder();
         source.query(query).from(from).size(size);
-        source.sort("sorter", ascending ? SortOrder.ASC : SortOrder.DESC);
+        source.sort("sorter.keyword", ascending ? SortOrder.ASC : SortOrder.DESC);
         return new Ids(connection, indexName + "_indx", source, false);
     }
 
@@ -422,27 +490,51 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
     @Override
     public Iterable<String> get(String indexName, RestHighLevelClient connection, String textQuery, byte[] minSorter, byte[] maxSorter, String[] anyOfTags, boolean ascending, int from, int size) {
         QueryBuilder query1 = QueryBuilders.termsQuery("tags.keyword", anyOfTags);
-        QueryBuilder query2 = QueryBuilders.rangeQuery("sorter")
-                .from(minSorter == null ? null : _b32.encodeAsString(minSorter)).includeLower(true)
-                .to(maxSorter == null ? null : _b32.encodeAsString(maxSorter)).includeUpper(false);
+        RangeQueryBuilder query2;
+        if (minSorter != null || maxSorter != null) {
+            query2 = QueryBuilders.rangeQuery("sorter.keyword");
+            if (minSorter != null) {
+                query2 = query2.gte(_b32.encodeAsString(minSorter));
+            }
+            if (maxSorter != null) {
+                query2 = query2.lt(_b32.encodeAsString(maxSorter));
+            }
+        } else {
+            query2 = null;
+        }
         QueryBuilder query3 = QueryBuilders.wrapperQuery(textQuery);
-        QueryBuilder query = QueryBuilders.boolQuery().must(query1).must(query2).must(query3);
+        BoolQueryBuilder query = QueryBuilders.boolQuery().must(query1).must(query3);
+        if (query2 != null) {
+            query = query.must(query2);
+        }
         SearchSourceBuilder source = new SearchSourceBuilder();
         source.query(query).from(from).size(size);
-        source.sort("sorter", ascending ? SortOrder.ASC : SortOrder.DESC);
+        source.sort("sorter.keyword", ascending ? SortOrder.ASC : SortOrder.DESC);
         return new Ids(connection, indexName + "_indx", source, false);
     }
 
     @Override
     public Iterable<String> get(String indexName, RestHighLevelClient connection, String textQuery, byte[] minSorter, byte[] maxSorter, boolean ascending, int from, int size) {
-        QueryBuilder query2 = QueryBuilders.rangeQuery("sorter")
-                .from(minSorter == null ? null : _b32.encodeAsString(minSorter)).includeLower(true)
-                .to(maxSorter == null ? null : _b32.encodeAsString(maxSorter)).includeUpper(false);
+        RangeQueryBuilder query2;
+        if (minSorter != null || maxSorter != null) {
+            query2 = QueryBuilders.rangeQuery("sorter.keyword");
+            if (minSorter != null) {
+                query2 = query2.gte(_b32.encodeAsString(minSorter));
+            }
+            if (maxSorter != null) {
+                query2 = query2.lt(_b32.encodeAsString(maxSorter));
+            }
+        } else {
+            query2 = null;
+        }
         QueryBuilder query3 = QueryBuilders.wrapperQuery(textQuery);
-        QueryBuilder query = QueryBuilders.boolQuery().must(query2).must(query3);
+        BoolQueryBuilder query = QueryBuilders.boolQuery().must(query3);
+        if (query2 != null) {
+            query = query.must(query2);
+        }
         SearchSourceBuilder source = new SearchSourceBuilder();
         source.query(query).from(from).size(size);
-        source.sort("sorter", ascending ? SortOrder.ASC : SortOrder.DESC);
+        source.sort("sorter.keyword", ascending ? SortOrder.ASC : SortOrder.DESC);
         return new Ids(connection, indexName + "_indx", source, false);
     }
 
@@ -575,11 +667,23 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
     @Override
     public long count(String indexName, RestHighLevelClient connection, String textQuery, byte[] minSorter, byte[] maxSorter, String[] anyOfTags) {
         QueryBuilder query1 = QueryBuilders.termsQuery("tags.keyword", anyOfTags);
-        QueryBuilder query2 = QueryBuilders.rangeQuery("sorter")
-                .from(minSorter == null ? null : _b32.encodeAsString(minSorter)).includeLower(true)
-                .to(maxSorter == null ? null : _b32.encodeAsString(maxSorter)).includeUpper(false);
+        RangeQueryBuilder query2;
+        if (minSorter != null || maxSorter != null) {
+            query2 = QueryBuilders.rangeQuery("sorter.keyword");
+            if (minSorter != null) {
+                query2 = query2.gte(_b32.encodeAsString(minSorter));
+            }
+            if (maxSorter != null) {
+                query2 = query2.lt(_b32.encodeAsString(maxSorter));
+            }
+        } else {
+            query2 = null;
+        }
         QueryBuilder query3 = QueryBuilders.wrapperQuery(textQuery);
-        QueryBuilder query = QueryBuilders.boolQuery().must(query1).must(query2).must(query3);
+        BoolQueryBuilder query = QueryBuilders.boolQuery().must(query1).must(query3);
+        if (query2 != null) {
+            query = query.must(query2);
+        }
         SearchSourceBuilder source = new SearchSourceBuilder();
         source.query(query);
 
@@ -617,9 +721,18 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
 
     @Override
     public long count(String indexName, RestHighLevelClient connection, byte[] minSorter, byte[] maxSorter) {
-        QueryBuilder query2 = QueryBuilders.rangeQuery("sorter")
-                .from(minSorter == null ? null : _b32.encodeAsString(minSorter)).includeLower(true)
-                .to(maxSorter == null ? null : _b32.encodeAsString(maxSorter)).includeUpper(false);
+        RangeQueryBuilder query2;
+        if (minSorter != null || maxSorter != null) {
+            query2 = QueryBuilders.rangeQuery("sorter.keyword");
+            if (minSorter != null) {
+                query2 = query2.gte(_b32.encodeAsString(minSorter));
+            }
+            if (maxSorter != null) {
+                query2 = query2.lt(_b32.encodeAsString(maxSorter));
+            }
+        } else {
+            query2 = null;
+        }
         SearchSourceBuilder source = new SearchSourceBuilder();
         source.query(query2);
 
@@ -658,10 +771,22 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
     @Override
     public long count(String indexName, RestHighLevelClient connection, byte[] minSorter, byte[] maxSorter, String[] anyOfTags) {
         QueryBuilder query1 = QueryBuilders.termsQuery("tags.keyword", anyOfTags);
-        QueryBuilder query2 = QueryBuilders.rangeQuery("sorter")
-                .from(minSorter == null ? null : _b32.encodeAsString(minSorter)).includeLower(true)
-                .to(maxSorter == null ? null : _b32.encodeAsString(maxSorter)).includeUpper(false);
-        QueryBuilder query = QueryBuilders.boolQuery().must(query1).must(query2);
+        RangeQueryBuilder query2;
+        if (minSorter != null || maxSorter != null) {
+            query2 = QueryBuilders.rangeQuery("sorter.keyword");
+            if (minSorter != null) {
+                query2 = query2.gte(_b32.encodeAsString(minSorter));
+            }
+            if (maxSorter != null) {
+                query2 = query2.lt(_b32.encodeAsString(maxSorter));
+            }
+        } else {
+            query2 = null;
+        }
+        BoolQueryBuilder query = QueryBuilders.boolQuery().must(query1);
+        if (query2 != null) {
+            query = query.must(query2);
+        }
         SearchSourceBuilder source = new SearchSourceBuilder();
         source.query(query);
 
@@ -701,11 +826,23 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
 
     @Override
     public long count(String indexName, RestHighLevelClient connection, String textQuery, byte[] minSorter, byte[] maxSorter) {
-        QueryBuilder query2 = QueryBuilders.rangeQuery("sorter")
-                .from(minSorter == null ? null : _b32.encodeAsString(minSorter)).includeLower(true)
-                .to(maxSorter == null ? null : _b32.encodeAsString(maxSorter)).includeUpper(false);
+        RangeQueryBuilder query2;
+        if (minSorter != null || maxSorter != null) {
+            query2 = QueryBuilders.rangeQuery("sorter.keyword");
+            if (minSorter != null) {
+                query2 = query2.gte(_b32.encodeAsString(minSorter));
+            }
+            if (maxSorter != null) {
+                query2 = query2.lt(_b32.encodeAsString(maxSorter));
+            }
+        } else {
+            query2 = null;
+        }
         QueryBuilder query3 = QueryBuilders.wrapperQuery(textQuery);
-        QueryBuilder query = QueryBuilders.boolQuery().must(query2).must(query3);
+        BoolQueryBuilder query = QueryBuilders.boolQuery().must(query3);
+        if (query2 != null) {
+            query = query.must(query2);
+        }
         SearchSourceBuilder source = new SearchSourceBuilder();
         source.query(query);
 
