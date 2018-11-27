@@ -91,8 +91,8 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
     public RestHighLevelClient openConnection(Properties properties) {
 
         RestClientBuilder builder = RestClient.builder(new HttpHost(
-                properties.getProperty("storedmap.elasticsearch.host", "localhost"),
-                Integer.parseInt(properties.getProperty("storedmap.elasticsearch.port", "9200")),
+                properties.getProperty("elasticsearch.host", "localhost"),
+                Integer.parseInt(properties.getProperty("elasticsearch.port", "9200")),
                 "http"))
                 .setRequestConfigCallback(new RestClientBuilder.RequestConfigCallback() {
                     @Override
