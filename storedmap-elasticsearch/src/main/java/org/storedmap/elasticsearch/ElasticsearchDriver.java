@@ -319,7 +319,9 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
 
         SearchSourceBuilder source = new SearchSourceBuilder();
         source.query(query);
-        source.sort("sorter.keyword", ascending == null || ascending ? SortOrder.ASC : SortOrder.DESC);
+        if (ascending != null) {
+            source.sort("sorter.keyword", ascending ? SortOrder.ASC : SortOrder.DESC);
+        }
         return new Ids(connection, indexName + "_indx", source, true);
     }
 
@@ -363,7 +365,9 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
         }
         SearchSourceBuilder source = new SearchSourceBuilder();
         source.query(query).from(from).size(size);
-        source.sort("sorter.keyword", ascending ? SortOrder.ASC : SortOrder.DESC);
+        if (ascending != null) {
+            source.sort("sorter.keyword", ascending ? SortOrder.ASC : SortOrder.DESC);
+        }
         return new Ids(connection, indexName + "_indx", source, false);
     }
 
