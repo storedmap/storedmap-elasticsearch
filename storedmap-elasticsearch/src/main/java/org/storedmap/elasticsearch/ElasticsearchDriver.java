@@ -15,7 +15,6 @@
  */
 package org.storedmap.elasticsearch;
 
-import org.storedmap.Driver;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -65,6 +64,7 @@ import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.search.SearchHits;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.elasticsearch.search.sort.SortOrder;
+import org.storedmap.Driver;
 
 /**
  *
@@ -372,14 +372,16 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
     }
 
     @Override
-    public int tryLock(String key, String indexName, RestHighLevelClient connection, int milliseconds) {
+    public Lock tryLock(String key, String indexName, RestHighLevelClient connection, int milliseconds, String sessionId) {
         long currentTime = System.currentTimeMillis(); // TODO: make universal cluster time
-        int millisStillToWait;
+        final int millisStillToWait;
+        final String sessionInDb;
         indexName = indexName + "_lock";
 
         Map map = _get(key, indexName, connection);
         if (map != null) {
             Long lockedUntil = (Long) map.get("lockedUntil");
+            sessionInDb = (String) map.get("sessionId");
             //System.out.println(indexName + ", "+ key +" locked until = " + lockedUntil);
             if (lockedUntil != null) {
                 millisStillToWait = (int) (lockedUntil - currentTime);
@@ -388,12 +390,14 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
             }
         } else {
             millisStillToWait = 0;
+            sessionInDb = sessionId;
         }
 
         // write lock time if we are not waiting anymore
         if (millisStillToWait <= 0) {
             map = new HashMap(2);
             map.put("lockedUntil", currentTime + milliseconds);
+            map.put("sessionId", sessionInDb);
             IndexRequest put = Requests.indexRequest(indexName).type("doc").id(key).source(map);
             try {
                 connection.index(put, RequestOptions.DEFAULT);
@@ -402,7 +406,17 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
             }
         }
 
-        return millisStillToWait;
+        return new Lock() {
+            @Override
+            public int getWaitTime() {
+                return millisStillToWait;
+            }
+
+            @Override
+            public String getLockerSession() {
+                return sessionInDb;
+            }
+        };
     }
 
     @Override
