@@ -33,6 +33,7 @@ import org.apache.commons.codec.binary.Base32;
 import org.apache.commons.codec.binary.Base64;
 import org.apache.http.HttpHost;
 import org.apache.http.client.config.RequestConfig;
+import org.apache.http.impl.nio.client.HttpAsyncClientBuilder;
 import org.elasticsearch.ElasticsearchStatusException;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.admin.cluster.health.ClusterHealthRequest;
@@ -96,6 +97,14 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
                 properties.getProperty("elasticsearch.host", "localhost"),
                 Integer.parseInt(properties.getProperty("elasticsearch.port", "9200")),
                 "http"))
+                .setHttpClientConfigCallback(new RestClientBuilder.HttpClientConfigCallback() {
+                    @Override
+                    public HttpAsyncClientBuilder customizeHttpClient(HttpAsyncClientBuilder hacb) {
+                        return hacb
+                                .setMaxConnTotal(1000)
+                                .setMaxConnPerRoute(1000);
+                    }
+                })
                 .setRequestConfigCallback(new RestClientBuilder.RequestConfigCallback() {
                     @Override
                     public RequestConfig.Builder customizeRequestConfig(RequestConfig.Builder requestConfigBuilder) {
@@ -115,7 +124,7 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
                 for (Object r : request.payloads()) {
                     Runnable[] callbacks = (Runnable[]) r;
                     if (callbacks[0] != null) {
-                        _unlockers.get(client).submit(callbacks[0]);
+                        callbacks[0].run();
                     }
                 }
             }
@@ -157,7 +166,7 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
         BulkProcessor bulker = BulkProcessor.builder(bulkConsumer, listener)
                 .setBulkActions(1000)
                 .setBulkSize(new ByteSizeValue(1L, ByteSizeUnit.MB))
-                .setConcurrentRequests(20)
+                .setConcurrentRequests(500)
                 .setFlushInterval(TimeValue.timeValueSeconds(10L))
                 .setBackoffPolicy(BackoffPolicy.constantBackoff(TimeValue.timeValueSeconds(1L), 3))
                 .build();
@@ -166,7 +175,7 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
             _bulkers.put(client, bulker);
             //_unlockers.put(client, Executors.newSingleThreadExecutor((Runnable r) -> new Thread(r, "ElasticsearchCallback")));
 
-            ExecutorService es = new ThreadPoolExecutor(10, Integer.MAX_VALUE, 1, TimeUnit.MINUTES, new ArrayBlockingQueue<>(10), new ThreadFactory() {
+            ExecutorService es = new ThreadPoolExecutor(20, Integer.MAX_VALUE, 1, TimeUnit.MINUTES, new ArrayBlockingQueue<>(100), new ThreadFactory() {
                 private int _num = 0;
 
                 @Override
