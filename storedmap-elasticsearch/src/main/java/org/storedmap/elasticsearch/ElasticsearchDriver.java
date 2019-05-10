@@ -23,8 +23,10 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 import org.apache.commons.codec.binary.Base32;
@@ -153,16 +155,28 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
         BiConsumer<BulkRequest, ActionListener<BulkResponse>> bulkConsumer
                 = (request, bulkListener) -> client.bulkAsync(request, RequestOptions.DEFAULT, bulkListener);
         BulkProcessor bulker = BulkProcessor.builder(bulkConsumer, listener)
-                .setBulkActions(500)
+                .setBulkActions(1000)
                 .setBulkSize(new ByteSizeValue(1L, ByteSizeUnit.MB))
-                .setConcurrentRequests(1)
+                .setConcurrentRequests(20)
                 .setFlushInterval(TimeValue.timeValueSeconds(10L))
                 .setBackoffPolicy(BackoffPolicy.constantBackoff(TimeValue.timeValueSeconds(1L), 3))
                 .build();
 
         synchronized (_bulkers) {
             _bulkers.put(client, bulker);
-            _unlockers.put(client, Executors.newSingleThreadExecutor((Runnable r) -> new Thread(r, "ElasticsearchCallback")));
+            //_unlockers.put(client, Executors.newSingleThreadExecutor((Runnable r) -> new Thread(r, "ElasticsearchCallback")));
+
+            ExecutorService es = new ThreadPoolExecutor(10, Integer.MAX_VALUE, 1, TimeUnit.MINUTES, new ArrayBlockingQueue<>(10), new ThreadFactory() {
+                private int _num = 0;
+
+                @Override
+                public Thread newThread(Runnable r) {
+                    _num++;
+                    return new Thread(r, "StoredMapESCallback-" + _num);
+                }
+            });
+
+            _unlockers.put(client, es);
         }
 
         return client;
