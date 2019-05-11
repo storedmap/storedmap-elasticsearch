@@ -51,16 +51,38 @@ public class Ids implements Iterable<String> {
             final SearchHit[] hits;
             SearchResponse response;
 
-            try {
-                response = client.search(sr, RequestOptions.DEFAULT);
+            boolean success = false;
+            do {
+                try {
+                    response = client.search(sr, RequestOptions.DEFAULT);
+                    success = true;
+                } catch (ElasticsearchStatusException ee) {
+                    if (ee.status().getStatus() == RestStatus.NOT_FOUND.getStatus()) {
+                        response = null;
+                        success = true;
+                    } else if (ee.status().getStatus() == RestStatus.SERVICE_UNAVAILABLE.getStatus()) {
+                        String msg = ee.getMessage();
+                        if (msg.contains("search_phase_execution_exception")) {
+                            System.out.println("Elasticsearch error: " + ee.getMessage() + ", retrying after wait");
+                            synchronized (ee) {
+                                try {
+                                    ee.wait(10);
+                                } catch (InterruptedException eee) {
+                                    throw new RuntimeException("Unexpected interruption", eee);
+                                }
+                            }
+                            success = false;
+                            response = null;
+                        } else {
+                            throw new RuntimeException(ee);
+                        }
+                    } else {
+                        throw new RuntimeException(ee);
+                    }
 
-            } catch (ElasticsearchStatusException ee) {
-                if (ee.status().getStatus() == RestStatus.NOT_FOUND.getStatus()) {
-                    response = null;
-                } else {
-                    throw new RuntimeException(ee);
                 }
-            }
+            } while (!success);
+
             if (response != null) {
                 hits = response.getHits().getHits();
             } else {

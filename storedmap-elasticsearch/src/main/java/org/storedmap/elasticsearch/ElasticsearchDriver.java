@@ -36,6 +36,7 @@ import org.apache.http.client.config.RequestConfig;
 import org.apache.http.impl.nio.client.HttpAsyncClientBuilder;
 import org.elasticsearch.ElasticsearchStatusException;
 import org.elasticsearch.action.ActionListener;
+import org.elasticsearch.action.DocWriteRequest;
 import org.elasticsearch.action.admin.cluster.health.ClusterHealthRequest;
 import org.elasticsearch.action.admin.cluster.health.ClusterHealthResponse;
 import org.elasticsearch.action.admin.indices.delete.DeleteIndexRequest;
@@ -101,8 +102,8 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
                     @Override
                     public HttpAsyncClientBuilder customizeHttpClient(HttpAsyncClientBuilder hacb) {
                         return hacb
-                                .setMaxConnTotal(1000)
-                                .setMaxConnPerRoute(1000);
+                                .setMaxConnTotal(750)
+                                .setMaxConnPerRoute(750);
                     }
                 })
                 .setRequestConfigCallback(new RestClientBuilder.RequestConfigCallback() {
@@ -124,7 +125,7 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
                 for (Object r : request.payloads()) {
                     Runnable[] callbacks = (Runnable[]) r;
                     if (callbacks[0] != null) {
-                        callbacks[0].run();
+                        _unlockers.get(client).submit(callbacks[0]);
                     }
                 }
             }
@@ -134,7 +135,9 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
                 if (response.hasFailures()) {
                     for (BulkItemResponse bir : response.getItems()) {
                         if (bir.isFailed()) {
-                            System.out.println("ITEM Failure::: " + bir.getFailureMessage());
+                            if (!bir.getOpType().equals(DocWriteRequest.OpType.DELETE)) {
+                                System.out.println("ITEM Failure::: " + bir.getFailureMessage());
+                            }
                         }
                     }
                 }
@@ -168,7 +171,7 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
                 .setBulkSize(new ByteSizeValue(1L, ByteSizeUnit.MB))
                 .setConcurrentRequests(500)
                 .setFlushInterval(TimeValue.timeValueSeconds(10L))
-                .setBackoffPolicy(BackoffPolicy.constantBackoff(TimeValue.timeValueSeconds(1L), 3))
+                .setBackoffPolicy(BackoffPolicy.constantBackoff(TimeValue.timeValueSeconds(1L), Integer.MAX_VALUE))
                 .build();
 
         synchronized (_bulkers) {
@@ -423,7 +426,27 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
             map.put("sessionId", sessionInDb);
             IndexRequest put = Requests.indexRequest(indexName).type("doc").id(key).source(map);
             try {
-                connection.index(put, RequestOptions.DEFAULT);
+
+                boolean success = false;
+                do {
+                    try {
+                        connection.index(put, RequestOptions.DEFAULT);
+                        success = true;
+                    } catch (ElasticsearchStatusException ee) {
+                        if (ee.status().getStatus() == RestStatus.TOO_MANY_REQUESTS.getStatus()) {
+                            System.out.println("Elasticsearch error: " + ee.getMessage() + ", retrying after wait");
+                            synchronized (ee) {
+                                try {
+                                    ee.wait(10);
+                                } catch (InterruptedException eee) {
+                                    throw new RuntimeException("Unexpected interruption", eee);
+                                }
+                            }
+                            success = false;
+                        }
+                    }
+                } while (!success);
+
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
