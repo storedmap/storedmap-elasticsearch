@@ -17,7 +17,6 @@ package org.storedmap.elasticsearch;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -46,8 +45,8 @@ public class MapUtility {
             return new BigDecimal(((Number) what).toString());
         } else if (what instanceof Iterable) {
             return convertNumbersToDecimals((Iterable) what);
-        } else if (what.getClass().isArray()) {
-            return convertNumbersToDecimals(Arrays.asList(what));
+            //} else if (what.getClass().isArray()) {
+            //    return convertNumbersToDecimals(Arrays.asList(what));
         } else {
             return what;
         }
