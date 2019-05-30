@@ -484,7 +484,7 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
 
     @Override
     public void put(String key, String indexName, RestHighLevelClient connection, Map<String, Object> map, Locale[] locales, String secondaryKey, byte[] sorter, String[] tags, Runnable callbackOnAdditionalIndex) {
-        Map<String, Object> data = new HashMap<>(map);
+        Map<String, Object> data = MapUtility.convertNumbersToDecimals(map);
         data.put("sorter", _b32.encodeAsString(sorter));
         data.put("tags", tags);
         data.put("sec", secondaryKey);
