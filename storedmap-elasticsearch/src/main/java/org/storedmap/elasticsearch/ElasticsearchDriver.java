@@ -167,10 +167,10 @@ public class ElasticsearchDriver implements Driver<RestHighLevelClient> {
         BiConsumer<BulkRequest, ActionListener<BulkResponse>> bulkConsumer
                 = (request, bulkListener) -> client.bulkAsync(request, RequestOptions.DEFAULT, bulkListener);
         BulkProcessor bulker = BulkProcessor.builder(bulkConsumer, listener)
-                .setBulkActions(1000)
-                .setBulkSize(new ByteSizeValue(1L, ByteSizeUnit.MB))
-                .setConcurrentRequests(500)
-                .setFlushInterval(TimeValue.timeValueSeconds(10L))
+                .setBulkActions(1500)
+                .setBulkSize(new ByteSizeValue(10L, ByteSizeUnit.MB))
+                .setConcurrentRequests(150)
+                .setFlushInterval(TimeValue.timeValueSeconds(1L))
                 .setBackoffPolicy(BackoffPolicy.constantBackoff(TimeValue.timeValueSeconds(1L), Integer.MAX_VALUE))
                 .build();
 
